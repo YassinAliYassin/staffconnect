@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fresh People Book — Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-[#FBFBF9] text-[#0A0A0A] antialiased">
+
+    <nav class="bg-[#0A0A0A] text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+            <span class="font-extrabold"><span class="text-[#A4C71D]">Fresh</span>People Book <span class="text-gray-400 text-sm font-normal">Admin</span></span>
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-gray-400" id="authState"></span>
+                <a href="/" class="text-sm text-gray-300 hover:text-white">← View site</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- login -->
+        <div id="loginBox" class="max-w-sm mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mt-10">
+            <h1 class="text-xl font-bold mb-4">Admin Access</h1>
+            <input id="code" type="password" placeholder="Admin code" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D] mb-4">
+            <button onclick="login()" class="w-full bg-[#A4C71D] text-white px-6 py-3 rounded-full font-bold hover:bg-[#8fb818] transition">Unlock</button>
+            <p class="text-red-500 text-sm mt-3 hidden" id="loginErr">Wrong code.</p>
+        </div>
+
+        <!-- dashboard -->
+        <div id="dash" class="hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-2xl font-black">Bookings</h1>
+                <div class="flex gap-2">
+                    <select id="statusFilter" onchange="load()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="">All statuses</option>
+                        <option>new</option><option>quoted</option><option>confirmed</option><option>cancelled</option>
+                    </select>
+                    <button onclick="load()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-100 transition">Refresh</button>
+                    <button onclick="logout()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50 transition">Lock</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="stats"></div>
+
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50 text-left text-gray-500 uppercase text-xs">
+                            <tr>
+                                <th class="px-4 py-3">Ref</th><th class="px-4 py-3">Role</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Times</th><th class="px-4 py-3">#</th>
+                                <th class="px-4 py-3">Venue</th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Phone</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">When</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rows"></tbody>
+                    </table>
+                </div>
+                <p class="p-4 text-gray-500 text-sm" id="empty" hidden>No bookings yet.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- booking detail modal -->
+    <div id="modal" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+        <div class="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-4">
+                <h2 class="text-xl font-bold" id="mRef"></h2>
+                <button class="text-gray-400 text-2xl leading-none" onclick="closeModal()">×</button>
+            </div>
+            <div id="mBody" class="space-y-3"></div>
+            <hr class="my-4">
+            <p class="text-xs font-bold text-gray-500 mb-2">PRE-FILLED WHATSAPP MESSAGE</p>
+            <pre id="mWa" class="bg-gray-50 rounded-lg p-3 text-xs whitespace-pre-wrap"></pre>
+            <div class="flex gap-3 mt-5">
+                <a id="mWaLink" href="#" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#1fb457]">Open WhatsApp</a>
+                <div class="flex-1"></div>
+                <button data-st="new" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">new</button>
+                <button data-st="quoted" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">quoted</button>
+                <button data-st="confirmed" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">confirmed</button>
+                <button data-st="cancelled" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-red-500 hover:text-white">cancelled</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function getCode() { return sessionStorage.getItem('fb_code') || ''; }
+        function getHeaders() { return { 'x-admin-code': getCode() }; }
+
+        async function login() {
+            const c = document.getElementById('code').value.trim();
+            const r = await fetch('/api/admin/bookings', { headers: { 'x-admin-code': c } });
+            if (r.ok) {
+                sessionStorage.setItem('fb_code', c);
+                document.getElementById('code').value = '';
+                init();
+            } else {
+                document.getElementById('loginErr').classList.remove('hidden');
+            }
+        }
+
+        function logout() { sessionStorage.removeItem('fb_code'); location.reload(); }
+
+        async function fetchBookings() {
+            const filter = document.getElementById('statusFilter').value;
+            const q = filter ? '?status=' + filter + '&' : '?';
+            const r = await fetch('/api/admin/bookings' + q, { headers: getHeaders() });
+            if (r.status === 401) { logout(); return null; }
+            return (await r.json()).bookings;
+        }
+
+        function badge(st) {
+            const map = { new:'bg-blue-100 text-blue-700', quoted:'bg-amber-100 text-amber-700', confirmed:'bg-green-100 text-green-700', cancelled:'bg-red-100 text-red-700' };
+            return `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${map[st]||'bg-gray-100 text-gray-600'}">${st}</span>`;
+        }
+
+        async function load() {
+            const b = await fetchBookings();
+            if (!b) return;
+            const rows = document.getElementById('rows');
+            document.getElementById('empty').hidden = b.length > 0;
+            rows.innerHTML = b.map(x => `<tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openModal('${x.ref}')">
+                <td class="px-4 py-3 font-semibold">${x.ref}</td>
+                <td class="px-4 py-3">${x.role}</td>
+                <td class="px-4 py-3">${x.event_date}</td>
+                <td class="px-4 py-3 text-gray-500">${x.start_time}–${x.end_time}</td>
+                <td class="px-4 py-3">${x.headcount}</td>
+                <td class="px-4 py-3">${x.venue}</td>
+                <td class="px-4 py-3">${x.name}</td>
+                <td class="px-4 py-3"><a href="https://wa.me/${x.phone.replace(/\D/g,'')}" target="_blank" class="text-[#A4C71D] hover:underline">${x.phone}</a></td>
+                <td class="px-4 py-3">${badge(x.status)}</td>
+                <td class="px-4 py-3 text-gray-500 text-xs">${x.created_at}</td>
+            </tr>`).join('');
+
+            // stats
+            const all = await (await fetch('/api/admin/bookings', { headers: getHeaders() })).json();
+            const nb = all.bookings;
+            document.getElementById('stats').innerHTML = [
+                ['Total', nb.length], ['New', nb.filter(x=>x.status==='new').length],
+                ['Confirmed', nb.filter(x=>x.status==='confirmed').length], ['Quoted', nb.filter(x=>x.status==='quoted').length]
+            ].map(([l,v]) => `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4"><p class="text-2xl font-black">${v}</p><p class="text-xs text-gray-500 font-semibold uppercase">${l}</p></div>`).join('');
+        }
+
+        async function openModal(ref) {
+            const b = (await fetchBookings()) || [];
+            const x = b.find(i => i.ref === ref);
+            if (!x) return;
+            document.getElementById('mRef').textContent = x.ref + ' · ' + badge(x.status);
+            document.getElementById('mBody').innerHTML = `
+                <p><b>Role:</b> ${x.role}</p>
+                <p><b>Date:</b> ${x.event_date} &nbsp; <b>Times:</b> ${x.start_time}–${x.end_time}</p>
+                <p><b>Headcount:</b> ${x.headcount}</p>
+                <p><b>Venue:</b> ${x.venue}</p>
+                <p><b>Name:</b> ${x.name}</p>
+                <p><b>Phone:</b> ${x.phone} ${x.email ? '· <b>Email:</b> ' + x.email : ''}</p>
+                ${x.notes ? '<p><b>Notes:</b> ' + x.notes + '</p>' : ''}
+                <p class="text-xs text-gray-400">Created: ${x.created_at}</p>`;
+            document.getElementById('mWa').textContent = x.whatsapp_text;
+            document.getElementById('mWaLink').href = 'https://wa.me/' + (x.phone ? x.phone.replace(/[^0-9]/g,'') : '') + '?text=' + encodeURIComponent(x.whatsapp_text);
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        async function setStatus(btn) {
+            const ref = document.getElementById('mRef').textContent.split(' ')[0];
+            const st = btn.dataset.st;
+            await fetch('/api/admin/bookings/' + ref, { method:'PATCH', headers: { ...getHeaders(), 'Content-Type':'application/json' }, body: JSON.stringify({ status: st }) });
+            closeModal(); load();
+        }
+
+        async function init() {
+            const b = await fetchBookings();
+            if (!b) return;
+            document.getElementById('loginBox').classList.add('hidden');
+            document.getElementById('dash').classList.remove('hidden');
+            document.getElementById('authState').textContent = 'unlocked';
+            load();
+        }
+
+        if (getCode()) init();
+    </script>
+</body>
+</html>

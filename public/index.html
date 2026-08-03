@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fresh People Book | Book Event Staff on WhatsApp</title>
+    <meta name="description" content="Book professional event staff on WhatsApp in minutes. Brand ambassadors, bartenders, hospitality staff, models & hosts, event logistics across Johannesburg & Gauteng. Structured bookings — fewer mistakes, faster deals.">
+    <link rel="canonical" href="https://fresh-people.co.za/book">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Inter', sans-serif; }
+        .step { display: none; }
+        .step.active { display: block; }
+        .role-card.sel { border-color: #A4C71D; background: #f7fbe9; }
+        @keyframes fadeIn { from {opacity:0; transform: translateY(8px);} to {opacity:1; transform:none;} }
+        .fade-in { animation: fadeIn .25s ease-out; }
+    </style>
+</head>
+<body class="bg-[#FBFBF9] text-[#0A0A0A] antialiased">
+
+    <nav class="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <a href="/" class="text-2xl font-extrabold"><span class="text-[#A4C71D]">Fresh</span><span class="text-[#0A0A0A]">People</span></a>
+                <div class="hidden md:flex items-center space-x-8 font-medium text-gray-700">
+                    <a href="#roles" class="hover:text-[#A4C71D]">Staff Roles</a>
+                    <a href="#how" class="hover:text-[#A4C71D]">How It Works</a>
+                    <a href="#faq" class="hover:text-[#A4C71D]">FAQ</a>
+                </div>
+                <a href="/admin" class="text-sm text-gray-500 hover:text-[#A4C71D] font-medium">Admin</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <header class="bg-gradient-to-br from-[#FBFBF9] via-white to-[#F0F5DC]">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+                <p class="text-[#A4C71D] font-bold tracking-wide mb-4 uppercase">WhatsApp Staff Booking</p>
+                <h1 class="text-4xl md:text-6xl font-black leading-tight tracking-tight mb-6">Book Event Staff <span class="text-[#A4C71D]">On WhatsApp</span></h1>
+                <p class="text-xl text-gray-600 mb-8 leading-relaxed max-w-xl">Pick your team, fill a few details, and we'll confirm on WhatsApp in minutes. Structured bookings — fewer mistakes, faster deals.</p>
+                <a href="#wizard" class="bg-[#25D366] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#1fb457] transition-colors inline-flex items-center gap-2">Start Booking →</a>
+                <div class="mt-8 flex flex-wrap gap-6 text-sm text-gray-500">
+                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Free to enquire</span>
+                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Respond in minutes</span>
+                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Randburg, Gauteng</span>
+                </div>
+            </div>
+            <div class="hidden lg:block">
+                <div class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
+                    <div class="bg-[#075E54] px-5 py-4 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-[#A4C71D] flex items-center justify-center text-white font-bold">FP</div>
+                        <div><p class="text-white font-semibold">Fresh People Booking</p><p class="text-[#82C7A8] text-xs">online</p></div>
+                    </div>
+                    <div class="bg-[#ECE5DD] p-5 space-y-3">
+                        <div class="bg-white rounded-lg rounded-tl-none px-4 py-2.5 max-w-[80%] shadow-sm text-sm"><span class="font-semibold">You</span><br>I need 3 brand ambassadors & 2 bartenders for a launch in Sandton on Friday.</div>
+                        <div class="bg-[#DCF8C6] rounded-lg rounded-tr-none px-4 py-2.5 max-w-[80%] ml-auto shadow-sm text-sm">Perfect! We'll send a quote & staffing plan shortly. 📋</div>
+                        <div class="bg-white rounded-lg rounded-tl-none px-4 py-2.5 max-w-[80%] shadow-sm text-sm">👍 Event date: 07 Aug, 17:00–22:00</div>
+                        <div class="bg-[#DCF8C6] rounded-lg rounded-tr-none px-4 py-2.5 max-w-[80%] ml-auto shadow-sm text-sm">Great — 5 staff booked & confirmed. 💚 We'll be there on time!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== WIZARD ===== -->
+    <section id="wizard" class="py-20 bg-white">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-10">
+                <p class="text-[#A4C71D] font-bold tracking-wide mb-3 uppercase">Book in minutes</p>
+                <h2 class="text-4xl font-black mb-2">Create Your Booking</h2>
+                <p class="text-gray-600">Steps below. We'll open WhatsApp with everything pre-filled at the end.</p>
+            </div>
+
+            <!-- progress -->
+            <div class="flex items-center justify-center gap-2 mb-8 text-sm font-semibold" id="progress"></div>
+
+            <div class="bg-[#FBFBF9] rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
+                <!-- STEP 1: role -->
+                <div class="step active fade-in" data-step="1">
+                    <h3 class="text-xl font-bold mb-4">What staff do you need?</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="roleGrid">
+                        <div class="role-card border-2 border-gray-200 rounded-xl p-4 cursor-pointer hover:border-[#A4C71D] transition" data-role="Brand Ambassadors">
+                            <p class="font-bold">Brand Ambassadors</p><p class="text-sm text-gray-600">Activations, launches, VIP events</p>
+                        </div>
+                        <div class="role-card border-2 border-gray-200 rounded-xl p-4 cursor-pointer hover:border-[#A4C71D] transition" data-role="Models & Hosts">
+                            <p class="font-bold">Models & Hosts</p><p class="text-sm text-gray-600">Front-of-house, galas, weddings</p>
+                        </div>
+                        <div class="role-card border-2 border-gray-200 rounded-xl p-4 cursor-pointer hover:border-[#A4C71D] transition" data-role="Hospitality Staff">
+                            <p class="font-bold">Hospitality Staff</p><p class="text-sm text-gray-600">RSA-certified bartenders, waitstaff</p>
+                        </div>
+                        <div class="role-card border-2 border-gray-200 rounded-xl p-4 cursor-pointer hover:border-[#A4C71D] transition" data-role="Event Logistics">
+                            <p class="font-bold">Event Logistics</p><p class="text-sm text-gray-600">Equipment, stock, coordination</p>
+                        </div>
+                        <div class="role-card border-2 border-gray-200 rounded-xl p-4 cursor-pointer hover:border-[#A4C71D] transition" data-role="Corporate Events">
+                            <p class="font-bold">Corporate Events</p><p class="text-sm text-gray-600">Conferences, seminars, launches</p>
+                        </div>
+                        <div class="role-card border-2 border-gray-200 rounded-xl p-4 cursor-pointer hover:border-[#A4C71D] transition" data-role="Wedding Services">
+                            <p class="font-bold">Wedding Services</p><p class="text-sm text-gray-600">Coordination, front-of-house, hospitality</p>
+                        </div>
+                    </div>
+                    <button class="mt-6 w-full bg-[#A4C71D] text-white px-6 py-3 rounded-full font-bold hover:bg-[#8fb818] transition" onclick="next(2)" id="to2" disabled>Continue</button>
+                </div>
+
+                <!-- STEP 2: date & time -->
+                <div class="step fade-in" data-step="2">
+                    <h3 class="text-xl font-bold mb-6">When is your event?</h3>
+                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📅 Event date</span>
+                        <input id="f_date" type="date" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                    </label>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <label><span class="font-semibold text-sm text-gray-700">🕒 Start time</span>
+                            <input id="f_start" type="time" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                        </label>
+                        <label><span class="font-semibold text-sm text-gray-700">End time</span>
+                            <input id="f_end" type="time" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                        </label>
+                    </div>
+                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">👥 How many staff?</span>
+                        <input id="f_headcount" type="number" min="1" value="1" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                    </label>
+                    <div class="flex gap-3 mt-6">
+                        <button class="flex-1 border-2 border-gray-300 text-gray-600 px-6 py-3 rounded-full font-bold hover:border-gray-400 transition" onclick="prev(1)">Back</button>
+                        <button class="flex-1 bg-[#A4C71D] text-white px-6 py-3 rounded-full font-bold hover:bg-[#8fb818] transition" onclick="next(3)" id="to3" disabled>Continue</button>
+                    </div>
+                </div>
+
+                <!-- STEP 3: venue & contact -->
+                <div class="step fade-in" data-step="3">
+                    <h3 class="text-xl font-bold mb-6">Where & who should we contact?</h3>
+                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📍 Venue / area</span>
+                        <input id="f_venue" type="text" placeholder="e.g. Sandton Convention Centre" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                    </label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">🙋 Your name</span>
+                            <input id="f_name" type="text" placeholder="Full name" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                        </label>
+                        <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📱 Phone (WhatsApp)</span>
+                            <input id="f_phone" type="tel" placeholder="+27 ..." class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                        </label>
+                    </div>
+                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📧 Email (optional)</span>
+                        <input id="f_email" type="email" placeholder="you@email.com" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                    </label>
+                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📝 Notes (optional)</span>
+                        <textarea id="f_notes" rows="3" placeholder="Anything else we should know — dress code, brief, etc." class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]"></textarea>
+                    </label>
+                    <div class="flex gap-3 mt-6">
+                        <button class="flex-1 border-2 border-gray-300 text-gray-600 px-6 py-3 rounded-full font-bold hover:border-gray-400 transition" onclick="prev(2)">Back</button>
+                        <button class="flex-1 bg-[#25D366] text-white px-6 py-3 rounded-full font-bold hover:bg-[#1fb457] transition" onclick="submit()">Submit Booking ➤</button>
+                    </div>
+                </div>
+
+                <!-- STEP 4: done -->
+                <div class="step fade-in" data-step="4">
+                    <div class="text-center py-6">
+                        <div class="w-16 h-16 bg-[#25D366] text-white rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-5">✓</div>
+                        <h3 class="text-2xl font-black mb-2">Booking Saved!</h3>
+                        <p class="text-gray-600 mb-2">Your booking <b id="doneRef"></b> has been logged. Finish on WhatsApp to get confirmed:</p>
+                        <a id="doneLink" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-[#25D366] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#1fb457] transition my-4">Open WhatsApp →</a>
+                        <p class="text-gray-500 text-sm">WhatsApp didn't open? <a id="doneLink2" href="#" target="_blank" rel="noopener" class="text-[#A4C71D] underline font-semibold">Tap here</a>.</p>
+                        <button class="mt-6 border-2 border-gray-300 text-gray-600 px-6 py-3 rounded-full font-bold hover:border-gray-400 transition" onclick="reset()">Start another booking</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section id="how" class="py-20 bg-[#FBFBF9]">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <p class="text-[#A4C71D] font-bold tracking-wide mb-3 uppercase">How It Works</p>
+                <h2 class="text-4xl font-black mb-4">Booked in 3 Simple Steps</h2>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="text-center p-6"><div class="w-16 h-16 bg-[#A4C71D] text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-5">1</div><h3 class="text-xl font-bold mb-2">Fill the form</h3><p class="text-gray-600">Pick your staff and enter your event details — takes under a minute.</p></div>
+                <div class="text-center p-6"><div class="w-16 h-16 bg-[#A4C71D] text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-5">2</div><h3 class="text-xl font-bold mb-2">Send on WhatsApp</h3><p class="text-gray-600">We open WhatsApp with everything pre-filled. Just hit send.</p></div>
+                <div class="text-center p-6"><div class="w-16 h-16 bg-[#A4C71D] text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-5">3</div><h3 class="text-xl font-bold mb-2">Get Confirmed</h3><p class="text-gray-600">We reply with availability and a quote, then your team is event-ready.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FAQ ===== -->
+    <section id="faq" class="py-20 bg-white">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12"><h2 class="text-4xl font-black mb-4">FAQ</h2></div>
+            <div class="space-y-4">
+                <div class="border border-gray-200 rounded-xl p-5"><h3 class="font-bold mb-1">Does it cost anything to enquire?</h3><p class="text-gray-600">No. Asking for a quote or availability is free. You only pay once staffing is confirmed.</p></div>
+                <div class="border border-gray-200 rounded-xl p-5"><h3 class="font-bold mb-1">What areas do you cover?</h3><p class="text-gray-600">Based in Randburg, serving Johannesburg & Gauteng — Sandton, Rosebank, Fourways, Midrand, Pretoria and beyond.</p></div>
+                <div class="border border-gray-200 rounded-xl p-5"><h3 class="font-bold mb-1">How fast do you respond?</h3><p class="text-gray-600">Usually within minutes during business hours.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-[#0A0A0A] text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <a href="/" class="text-2xl font-bold"><span class="text-[#A4C71D]">Fresh</span><span class="text-white">People</span></a>
+            <p class="mt-4 text-gray-400">Randburg, Johannesburg · <a href="mailto:info@fresh-people.co.za" class="hover:text-[#A4C71D]">info@fresh-people.co.za</a></p>
+            <div class="border-t border-gray-800 mt-8 pt-6 text-center text-gray-500 text-sm">© <span id="year"></span> Fresh People · Powered by Solid Solutions AI</div>
+        </div>
+    </footer>
+
+    <script>
+        const steps = [1,2,3,4];
+        let current = 1;
+        let selRole = null;
+        let bookingData = null;
+
+        const $ = id => document.getElementById(id);
+
+        function renderProgress() {
+            $('progress').innerHTML = steps.map(n =>
+                `<div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-full flex items-center justify-center ${n < current ? 'bg-[#A4C71D] text-white' : n === current ? 'bg-[#A4C71D] text-white ring-4 ring-[#A4C71D]/20' : 'bg-gray-200 text-gray-500'} text-sm font-bold">${n < current ? '✓' : n}</div>
+                    ${n < 4 ? '<div class="w-8 h-0.5 ' + (n < current ? 'bg-[#A4C71D]' : 'bg-gray-200') + '"></div>' : ''}
+                </div>`).join('');
+        }
+
+        function show(n) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.querySelector(`.step[data-step="${n}"]`).classList.add('active');
+            current = n;
+            renderProgress();
+        }
+
+        function next(n) { if (validate(current)) show(n); }
+        function prev(n) { show(n); }
+
+        function validate(step) {
+            if (step === 1) return selRole !== null;
+            if (step === 2) {
+                const d = $('f_date').value, s = $('f_start').value, e = $('f_end').value, h = $('f_headcount').value;
+                if (!d || !s || !e || !h || Number(h) < 1) { alert('Please complete date, times and headcount.'); return false; }
+                return true;
+            }
+            return true;
+        }
+
+        // role selection
+        document.querySelectorAll('.role-card').forEach(c => {
+            c.addEventListener('click', () => {
+                document.querySelectorAll('.role-card').forEach(x => x.classList.remove('sel'));
+                c.classList.add('sel');
+                selRole = c.dataset.role;
+                $('to2').disabled = false;
+            });
+        });
+
+        // enable step-2 continue when fields present
+        ['f_date','f_start','f_end','f_headcount'].forEach(id => {
+            $(id).addEventListener('input', () => {
+                $('to3').disabled = !( $('f_date').value && $('f_start').value && $('f_end').value && Number($('f_headcount').value) >= 1 );
+            });
+        });
+
+        async function submit() {
+            if (!validate(2) || !$('f_venue').value || !$('f_name').value || !$('f_phone').value) {
+                alert('Please complete venue, name and phone.');
+                return;
+            }
+            const payload = {
+                role: selRole,
+                event_date: $('f_date').value,
+                start_time: $('f_start').value,
+                end_time: $('f_end').value,
+                headcount: Number($('f_headcount').value),
+                venue: $('f_venue').value,
+                name: $('f_name').value,
+                phone: $('f_phone').value,
+                email: $('f_email').value,
+                notes: $('f_notes').value,
+            };
+            try {
+                const resp = await fetch('/api/bookings', {
+                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Save failed');
+                bookingData = data;
+                $('doneRef').textContent = data.booking.ref;
+                $('doneLink').href = data.waLink;
+                $('doneLink2').href = data.waLink;
+                show(4);
+            } catch (err) {
+                alert('Something went wrong saving your booking: ' + err.message);
+            }
+        }
+
+        function reset() {
+            selRole = null;
+            document.querySelectorAll('.role-card').forEach(x => x.classList.remove('sel'));
+            ['f_date','f_start','f_end','f_headcount','f_venue','f_name','f_phone','f_email','f_notes'].forEach(id => $(id).value = '');
+            $('f_headcount').value = '1';
+            $('to2').disabled = true; $('to3').disabled = true;
+            show(1);
+        }
+
+        renderProgress();
+        document.getElementById('year').textContent = new Date().getFullYear();
+    </script>
+</body>
+</html>

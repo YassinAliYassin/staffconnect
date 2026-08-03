@@ -1,0 +1,21 @@
+{
+  "name": "fresh-people-book",
+  "version": "2.0.0",
+  "description": "Fresh People Book — take.app-style WhatsApp staff booking app with real backend (bookings API + admin dashboard).",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
