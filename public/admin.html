@@ -39,6 +39,7 @@
                         <option>new</option><option>available</option><option>quoted</option><option>confirmed</option><option>cancelled</option>
                     </select>
                     <button onclick="load()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-100 transition">Refresh</button>
+                    <button onclick="toggleTimesheets()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-100 transition">Timesheets</button>
                     <button onclick="logout()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50 transition">Lock</button>
                 </div>
             </div>
@@ -59,6 +60,23 @@
                 </div>
                 <p class="p-4 text-gray-500 text-sm" id="empty" hidden>No bookings yet.</p>
             </div>
+
+            <!-- timesheets panel -->
+            <div id="tsPanel" class="hidden bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-6">
+                <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                    <span class="font-bold text-gray-700">Captured Timesheets</span>
+                    <button onclick="toggleTimesheets()" class="text-sm text-[#A4C71D] hover:underline">close</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50 text-left text-gray-500 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Ref</th><th class="px-4 py-3">Staff</th><th class="px-4 py-3">Role</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">In</th><th class="px-4 py-3">Out</th><th class="px-4 py-3">Hours</th><th class="px-4 py-3">Venue</th></tr>
+                        </thead>
+                        <tbody id="tsRows"></tbody>
+                    </table>
+                </div>
+                <p class="p-4 text-gray-500 text-sm" id="tsEmpty" hidden>No timesheets captured yet.</p>
+            </div>
         </div>
     </main>
 
@@ -76,6 +94,12 @@
             <div class="flex gap-3 mt-5 flex-wrap">
                 <a id="mWaLink" href="#" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#1fb457]">1. Availability Check</a>
                 <a id="mWaDetails" href="#" target="_blank" rel="noopener" class="bg-[#A4C71D] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#8fb818]">2. Full Details</a>
+                <a id="mWaTimesheet" href="#" target="_blank" rel="noopener" class="bg-gray-800 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-700">3. Timesheet Request</a>
+                <button id="mSendTimesheet" onclick="sendTimesheet()" class="bg-gray-800 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-700 border-0">Send Timesheet →</button>
+            </div>
+            <div id="mTimesheetBox" class="hidden mt-4 bg-teal-50 border border-teal-200 rounded-xl p-3 text-sm">
+                <p class="font-bold text-teal-800 mb-1">Captured Timesheet ✅</p>
+                <div id="mTimesheetBody" class="text-gray-700"></div>
             </div>
             <div class="flex gap-3 mt-4 flex-wrap">
                 <div class="flex-1"></div>
@@ -163,15 +187,64 @@
 
             // fetch both message stages + links
             const m = await (await fetch('/api/admin/bookings/' + ref + '/messages', { headers: getHeaders() })).json();
-            document.getElementById('mWa').textContent = m.availability_text + '\n\n--- FULL DETAILS ---\n' + m.details_text;
+            document.getElementById('mWa').textContent = m.availability_text + '\n\n--- FULL DETAILS ---\n' + m.details_text + '\n\n--- TIMESHEET ---\n' + m.timesheet_text;
             document.getElementById('mWaLink').href = m.linkAvailability;
             document.getElementById('mWaLink').innerHTML = '1. Availability Check';
             document.getElementById('mWaDetails').href = m.linkDetails;
             document.getElementById('mWaDetails').innerHTML = '2. Full Details';
+            document.getElementById('mWaTimesheet').href = m.linkTimesheet;
+            document.getElementById('mWaTimesheet').innerHTML = '3. Timesheet Request';
+            // captured timesheet, if any
+            const tsBox = document.getElementById('mTimesheetBox');
+            if (m.timesheet) {
+                tsBox.classList.remove('hidden');
+                document.getElementById('mTimesheetBody').innerHTML =
+                    `<p><b>⏰ In:</b> ${m.timesheet.timeIn} &nbsp; <b>Out:</b> ${m.timesheet.timeOut}</p>
+                     <p><b>🧮 Total:</b> ${m.timesheet.totalHours} hours</p>
+                     <p class="text-xs text-gray-500 mt-1">Raw reply: "${m.timesheet.raw || ''}"</p>`;
+            } else {
+                tsBox.classList.add('hidden');
+            }
             document.getElementById('modal').classList.remove('hidden');
         }
 
+        async function sendTimesheet() {
+            const ref = document.getElementById('mRef').textContent.split(' ')[0];
+            document.getElementById('mSendTimesheet').disabled = true;
+            document.getElementById('mSendTimesheet').textContent = 'Sending…';
+            try {
+                const r = await fetch('/api/admin/bookings/' + ref + '/timesheet', { method: 'POST', headers: { ...getHeaders(), 'Content-Type': 'application/json' } });
+                const j = await r.json();
+                alert(j.result && j.result.live ? 'Timesheet request sent live ✅' : 'Sent as deep-link (bridge not live): ' + (j.result?.reason || ''));
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                document.getElementById('mSendTimesheet').disabled = false;
+                document.getElementById('mSendTimesheet').textContent = 'Send Timesheet →';
+            }
+        }
+
         function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        async function toggleTimesheets() {
+            const panel = document.getElementById('tsPanel');
+            panel.classList.toggle('hidden');
+            if (panel.classList.contains('hidden')) return;
+            const r = await fetch('/api/admin/timesheets', { headers: getHeaders() });
+            const { timesheets } = await r.json();
+            const rows = document.getElementById('tsRows');
+            document.getElementById('tsEmpty').hidden = timesheets.length > 0;
+            rows.innerHTML = timesheets.map(t => `<tr class="border-t border-gray-100 cursor-pointer" onclick="openModal('${t.ref}')">
+                <td class="px-4 py-3 font-semibold">${t.ref}</td>
+                <td class="px-4 py-3">${t.name || ''}</td>
+                <td class="px-4 py-3">${t.role || ''}</td>
+                <td class="px-4 py-3">${t.event_date || ''}</td>
+                <td class="px-4 py-3">${t.timeIn}</td>
+                <td class="px-4 py-3">${t.timeOut}</td>
+                <td class="px-4 py-3 font-bold text-teal-700">${t.totalHours}h</td>
+                <td class="px-4 py-3 text-gray-500">${t.venue || ''}</td>
+            </tr>`).join('');
+        }
 
         async function setStatus(btn) {
             const ref = document.getElementById('mRef').textContent.split(' ')[0];

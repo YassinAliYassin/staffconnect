@@ -157,19 +157,66 @@ function composeBookingDetails(b) {
   return lines.join('\n');
 }
 
+// Stage 3 — timesheet request (sent after the event ends; asks for time in/out)
+function composeTimesheetRequest(b) {
+  return [
+    'Hi ' + b.name + '! Hope the event went well. 🙌',
+    'To close out your timesheet, please reply with your **time in** and **time out**, e.g.:',
+    '',
+    '08:00 16:00',
+    '',
+    '📅 Event: ' + b.event_date,
+    '📍 Venue: ' + b.venue,
+    '📌 Ref: ' + b.ref + ' · StaffConnect',
+  ].join('\n');
+}
+
+// Parse a timesheet reply like "08:00 16:00", "8am - 5pm", "08:00 to 16:30"
+// into { timeIn, timeOut, totalHours }. Returns null if it doesn't look like one.
+function parseTimesheetReply(text) {
+  const t = String(text || '').toLowerCase();
+  // match two clock times with optional am/pm: H, HH:MM, 8am, 17:30pm
+  const re = /(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?/g;
+  const times = [];
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    if (times.length >= 2) break;
+    const h = Number(m[1]);
+    if (h > 23) continue;
+    let hour = h;
+    const min = m[2] ? Number(m[2]) : 0;
+    const ap = (m[3] || '').replace(/\./g, '').toLowerCase();
+    if (ap === 'pm' && hour < 12) hour += 12;
+    if (ap === 'am' && hour === 12) hour = 0;
+    if (min > 59) continue;
+    times.push({ hour, min });
+  }
+  if (times.length < 2) return null;
+  const minutes = (x) => x.hour * 60 + x.min;
+  let diff = minutes(times[1]) - minutes(times[0]);
+  // crossing midnight
+  if (diff < 0) diff += 24 * 60;
+  const fmt = (x) => String(x.hour).padStart(2, '0') + ':' + String(x.min).padStart(2, '0');
+  return {
+    timeIn: fmt(times[0]),
+    timeOut: fmt(times[1]),
+    totalHours: Number((diff / 60).toFixed(2)),
+  };
+}
+
 // ── DB-agnostic helpers (Supabase or SQLite) ──
-async function findBookingByPhone(phone) {
+async function findBookingByPhone(phone, status = 'new') {
   const clean = String(phone || '').replace(/\D/g, '');
   if (!clean) return null;
   const digits = (p) => String(p || '').replace(/\D/g, '');
+  const matches = (r) => digits(r.phone).endsWith(clean.slice(-9));
   if (useSupabase) {
     const { data } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(500);
     const rows = data || [];
-    return rows.find((r) => digits(r.phone).endsWith(clean.slice(-9)) && r.status === 'new') || null;
+    return rows.find((r) => matches(r) && (status === 'any' || r.status === status)) || null;
   }
   const rows = db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 500').all();
-  const found = rows.find((r) => digits(r.phone).endsWith(clean.slice(-9)) && r.status === 'new');
-  return found || null;
+  return rows.find((r) => matches(r) && (status === 'any' || r.status === status)) || null;
 }
 
 // WhatsApp now keys senders by LID (Linked ID) for privacy. The bridge stores a
@@ -198,6 +245,15 @@ async function setBookingStatus(ref, status) {
   } else {
     db.prepare('UPDATE bookings SET status = ? WHERE ref = ?').run(status, ref);
   }
+}
+
+async function getBookingByRef(ref) {
+  if (useSupabase) {
+    const { data, error } = await supabase.from('bookings').select('*').eq('ref', ref).maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+  return db.prepare('SELECT * FROM bookings WHERE ref = ?').get(ref) || null;
 }
 
 // ── Reminder/availability-sent registry ──
@@ -270,6 +326,22 @@ async function pollBridgeReplies() {
     if (seenReplyIds.has(row.id)) continue;
     const text = String(row.content || '').trim();
     const lower = text.toLowerCase();
+
+    let phone = String(row.sender || '').split('@')[0];
+    // WhatsApp LIDs obscure the real number — resolve to the phone via lid_map so we
+    // can match the reply to the booking we sent. Fall back to the raw sender digits.
+    const lidPhone = await resolveLid(row.sender);
+    if (lidPhone) phone = lidPhone;
+
+    // Timesheet reply (two clock times) — only meaningful once an event has wrapped.
+    // Try to capture it before the YES/NO availability check so a "08:00 16:00" reply
+    // isn't mistaken for a single-word confirmation.
+    if (parseTimesheetReply(text)) {
+      const capturedRef = await captureTimesheetReply(row, phone);
+      if (capturedRef) { seenReplyIds.add(row.id); continue; }
+      // fall through if not a timesheet-targeted booking
+    }
+
     // Only treat short affirmative/negative replies as availability answers
     if (!/^(yes|yep|yeah|ya|sure|ok|y|no|nope|nah|not available|busy|can'?t|cant)/.test(lower)) continue;
     const isYes = /^(yes|yep|yeah|ya|sure|ok|y)\b/.test(lower);
@@ -279,11 +351,6 @@ async function pollBridgeReplies() {
     const replyTime = row.timestamp ? new Date(row.timestamp.replace(' ', 'T') + (row.timestamp.includes('Z') ? '' : 'Z')).getTime() : 0;
     if (!replyTime || (nowMs - replyTime) > WINDOW) continue;
 
-    let phone = String(row.sender || '').split('@')[0];
-    // WhatsApp LIDs obscure the real number — resolve to the phone via lid_map so we
-    // can match the reply to the booking we sent. Fall back to the raw sender digits.
-    const lidPhone = await resolveLid(row.sender);
-    if (lidPhone) phone = lidPhone;
     const booking = await findBookingByPhone(phone);
     if (!booking) continue; // no pending 'new' booking for that number
 
@@ -308,6 +375,106 @@ async function pollBridgeReplies() {
       console.log(`[bridge] ${booking.ref} staff NO → cancelled`);
     }
   }
+}
+
+// ── Timesheet stage ──
+// After the event's end time passes, we (the agency) close the conversation by
+// sending the staff member a timesheet request. Their reply (time in / time out)
+// is parsed and stored. State lives in bridge_state.db alongside the sent-registry.
+let tsRegistry = new Map(); // ref -> { sentAt }
+let tsTimesheets = new Map(); // ref -> { timeIn, timeOut, totalHours, raw, at }
+function ensureTsTables() {
+  if (!rrdb) return;
+  rrdb.exec(`CREATE TABLE IF NOT EXISTS timesheet_sent (ref TEXT PRIMARY KEY, at INTEGER);
+             CREATE TABLE IF NOT EXISTS timesheets (ref TEXT PRIMARY KEY, time_in TEXT, time_out TEXT, total_hours REAL, raw TEXT, at INTEGER);`);
+}
+function loadTsRegistries() {
+  try {
+    ensureTsTables();
+    const sents = rrdb.prepare('SELECT ref, at FROM timesheet_sent').all();
+    for (const r of sents) tsRegistry.set(r.ref, { sentAt: r.at });
+    const rows = rrdb.prepare('SELECT * FROM timesheets').all();
+    for (const r of rows) tsTimesheets.set(r.ref, { timeIn: r.time_in, timeOut: r.time_out, totalHours: r.total_hours, raw: r.raw, at: r.at });
+  } catch (e) {
+    console.error('[bridge] timesheet registry load error:', e.message);
+  }
+}
+function markTimesheetSent(ref) {
+  tsRegistry.set(ref, { sentAt: Date.now() });
+  try {
+    if (rrdb) { ensureTsTables(); rrdb.prepare('INSERT OR REPLACE INTO timesheet_sent (ref, at) VALUES (?,?)').run(ref, Date.now()); }
+  } catch (e) {}
+}
+function wasTimesheetSent(ref) {
+  return tsRegistry.has(ref);
+}
+function storeTimesheet(ref, data, raw) {
+  tsTimesheets.set(ref, { ...data, raw, at: Date.now() });
+  try {
+    if (rrdb) {
+      ensureTsTables();
+      rrdb.prepare('INSERT OR REPLACE INTO timesheets (ref, time_in, time_out, total_hours, raw, at) VALUES (?,?,?,?,?,?)')
+        .run(ref, data.timeIn, data.timeOut, data.totalHours, raw, Date.now());
+    }
+  } catch (e) { console.error('[bridge] timesheet store error:', e.message); }
+}
+function getTimesheet(ref) {
+  return tsTimesheets.get(ref) || null;
+}
+
+// Auto-send timesheet request once the event has ended, for staff who confirmed.
+async function pollTimesheets() {
+  if (!WA_BRIDGE_URL || !bridge || !bridge.online || !bridge.authenticated) return;
+  let bookings;
+  if (useSupabase) {
+    const { data } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(500);
+    bookings = data || [];
+  } else {
+    bookings = db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 500').all();
+  }
+  const now = new Date();
+  for (const b of bookings) {
+    if (!['available', 'confirmed'].includes(b.status)) continue;   // must have confirmed
+    if (wasTimesheetSent(b.ref)) continue;                          // don't spam
+    const end = eventEndDate(b);
+    if (!end || now < end) continue;                                // event not over yet
+    const text = composeTimesheetRequest(b);
+    const sent = await sendBroadcast(b.phone, text);
+    if (sent.live) markTimesheetSent(b.ref);
+    console.log(`[bridge] ${b.ref} timesheet request sent live=${sent.live} (${sent.reason || 'ok'})`);
+  }
+}
+
+// Combine event_date (YYYY-MM-DD) + end_time (HH:MM) into a local Date.
+function eventEndDate(b) {
+  if (!b.event_date || !b.end_time) return null;
+  const m = String(b.end_time).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(`${b.event_date}T${m[1].padStart(2, '0')}:${m[2]}:00`);
+}
+
+// Detect a timesheet reply (two clock times) and capture it against a confirmed booking
+// whose timesheet request we sent. Returns the booking ref captured, or null.
+async function captureTimesheetReply(row, phone) {
+  const parsed = parseTimesheetReply(row.content);
+  if (!parsed) return null;
+  const booking = await findBookingByPhone(phone, 'any');
+  if (!booking) return null;
+  if (!wasTimesheetSent(booking.ref)) return null; // we must have asked
+  storeTimesheet(booking.ref, parsed, String(row.content));
+  console.log(`[bridge] ${booking.ref} timesheet captured: in ${parsed.timeIn} out ${parsed.timeOut} = ${parsed.totalHours}h`);
+  // Acknowledge to the staff member (agency is the one ending the conversation).
+  const ack = [
+    `Thanks ${booking.name}! Your timesheet is logged ✅`,
+    '',
+    `⏰ In: ${parsed.timeIn}`,
+    `⏰ Out: ${parsed.timeOut}`,
+    `🧮 Total: ${parsed.totalHours} hours`,
+    '',
+    '📌 Ref: ' + booking.ref + ' · StaffConnect',
+  ].join('\n');
+  await sendBroadcast(booking.phone, ack);
+  return booking.ref;
 }
 
 // ── API ──
@@ -412,29 +579,57 @@ app.get('/api/admin/bookings', async (req, res) => {
 app.get('/api/admin/bookings/:ref/messages', async (req, res) => {
   if (!checkAdmin(req, res)) return;
   try {
-    let b;
-    if (useSupabase) {
-      const { data, error } = await supabase.from('bookings').select('*').eq('ref', req.params.ref).maybeSingle();
-      if (error) throw error;
-      b = data;
-    } else {
-      b = db.prepare('SELECT * FROM bookings WHERE ref = ?').get(req.params.ref);
-    }
+    const b = await getBookingByRef(req.params.ref);
     if (!b) return res.status(404).json({ error: 'Not found.' });
     const clean = (n) => String(n || '').replace(/\D/g, '');
     const staffJid = clean(b.phone);
     const availability_text = composeAvailabilityMessage(b);
     const details_text = composeBookingDetails(b);
+    const timesheet_text = composeTimesheetRequest(b);
     res.json({
       phone: b.phone,
       linkAvailability: `https://wa.me/${staffJid}?text=${encodeURIComponent(availability_text)}`,
       linkDetails: `https://wa.me/${staffJid}?text=${encodeURIComponent(details_text)}`,
+      linkTimesheet: `https://wa.me/${staffJid}?text=${encodeURIComponent(timesheet_text)}`,
       linkOffice: `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(availability_text)}`,
       availability_text,
       details_text,
+      timesheet_text,
+      timesheet: getTimesheet(b.ref), // captured time-in/out/total, if any
     });
   } catch (err) {
     console.error('compose messages error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── All captured timesheets (admin) ──
+app.get('/api/admin/timesheets', async (req, res) => {
+  if (!checkAdmin(req, res)) return;
+  const out = [];
+  for (const [ref, ts] of tsTimesheets) {
+    const b = await getBookingByRef(ref).catch(() => null);
+    out.push({
+      ref, timeIn: ts.timeIn, timeOut: ts.timeOut, totalHours: ts.totalHours, raw: ts.raw, at: ts.at,
+      name: b ? b.name : null, role: b ? b.role : null, venue: b ? b.venue : null, event_date: b ? b.event_date : null, phone: b ? b.phone : null,
+    });
+  }
+  out.sort((a, b) => (b.at || 0) - (a.at || 0));
+  res.json({ timesheets: out });
+});
+
+// ── Manually send a timesheet request now (admin) ──
+app.post('/api/admin/bookings/:ref/timesheet', async (req, res) => {
+  if (!checkAdmin(req, res)) return;
+  try {
+    const b = await getBookingByRef(req.params.ref);
+    if (!b) return res.status(404).json({ error: 'Not found.' });
+    const text = composeTimesheetRequest(b);
+    const result = await sendBroadcast(b.phone, text);
+    if (result.live) markTimesheetSent(b.ref);
+    res.json({ ref: b.ref, result, text });
+  } catch (err) {
+    console.error('timesheet send error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -526,7 +721,9 @@ app.listen(PORT, async () => {
     console.log(`WhatsApp bridge: ${health.online ? 'online' : 'offline'} · authenticated=${health.authenticated} (${health.reason || 'ok'})`);
     if (WA_BRIDGE_DB) {
       await loadSentRegistry(); // persist which bookings got a live stage-1
+      await loadTsRegistries(); // timesheet request-sent + captured data
       setInterval(() => pollBridgeReplies().catch((e) => console.error('[bridge] poll error:', e.message)), BRIDGE_POLL_MS);
+      setInterval(() => pollTimesheets().catch((e) => console.error('[bridge] timesheet poll error:', e.message)), BRIDGE_POLL_MS);
     }
     setInterval(() => bridgeHealth().catch(() => {}), 15000);
   }
