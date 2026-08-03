@@ -42,7 +42,23 @@ Configure via `.env` (see `.env.example`):
 | `PORT` | `5184` | HTTP port |
 | `WA_NUMBER` | `27672961272` | WhatsApp number for the wa.me deep-links |
 | `ADMIN_CODE` | `fresh-admin` | Admin dashboard passcode — set a strong one in prod |
-| `DATA_DIR` | `./data` | Where the SQLite DB lives |
+| `DATA_DIR` | `./data` | Where the SQLite fallback DB lives |
+| `SUPABASE_URL` | — | Supabase project URL (e.g. https://xxx.supabase.co) |
+| `SUPABASE_SECRET_KEY` | — | Supabase secret/service key (server-side) |
+
+## Storage: SQLite (default) or Supabase
+
+StaffConnect stores bookings in **Supabase Postgres when configured**, and
+**automatically falls back to local SQLite** if the Supabase `bookings` table
+isn't provisioned yet — so the app never goes down mid-migration.
+
+- Set `SUPABASE_URL` + `SUPABASE_SECRET_KEY` in `.env` to enable Supabase.
+- The server checks at startup whether `public.bookings` exists; if yes it uses
+  Supabase, if not it falls back to SQLite (and logs which backend it chose).
+- `GET /api/health` reports `"storage":"supabase"` or `"storage":"sqlite"`.
+- To finish the migration, apply `supabase/migrations/0001_create_bookings.sql`
+  (CREATE TABLE + RLS + index) in the Supabase SQL editor. Once applied, restart
+  the service and it switches to Supabase automatically.
 
 ## API
 
