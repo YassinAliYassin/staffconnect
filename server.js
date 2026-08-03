@@ -74,18 +74,33 @@ function genRef() {
   return 'FB-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 }
 
-function composeWhatsApp(b) {
-  const fields = [
-    'Hi ' + b.name + '! You\'ve been booked. Here are your details:',
+// Stage 1 — availability check (sent first; asks the staff member if they're free)
+function composeAvailabilityMessage(b) {
+  return [
+    'Hi ' + b.name + '! 👋',
+    'Are you available for this booking? Please reply YES or NO.',
+    '',
+    '📅 Date: ' + b.event_date,
+    '🕒 Times: ' + b.start_time + ' – ' + b.end_time,
+    '📍 Area: ' + b.venue,
+    '📌 Ref: ' + b.ref,
+  ].join('\n');
+}
+
+// Stage 2 — full booking details (sent after they confirm availability)
+function composeBookingDetails(b) {
+  const lines = [
+    'Great — you\'re confirmed! 🎉 Here are your full booking details:',
+    '',
     '🌟 Role: ' + b.role,
     '📅 Date: ' + b.event_date,
     '🕒 Times: ' + b.start_time + ' – ' + b.end_time,
-    '📍 Venue/area: ' + b.venue,
+    '📍 Venue: ' + b.venue,
   ];
-  if (b.notes) fields.push('📝 Instructions: ' + b.notes);
-  fields.push('Please confirm you can make it. Thanks! 🙏');
-  fields.push('📌 Ref: ' + b.ref + ' · StaffConnect');
-  return fields.join('\n');
+  if (b.notes) lines.push('📝 Instructions: ' + b.notes);
+  lines.push('Thank you! 🙏');
+  lines.push('📌 Ref: ' + b.ref + ' · StaffConnect');
+  return lines.join('\n');
 }
 
 // ── API ──
@@ -99,15 +114,18 @@ app.post('/api/bookings', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: role, event_date, headcount, venue, name, phone.' });
   }
   const ref = genRef();
-  const whatsapp_text = composeWhatsApp({
-    role, event_date, start_time: start_time || '', end_time: end_time || '', headcount,
-    venue, name, phone, notes, ref,
+  const availability_text = composeAvailabilityMessage({
+    name, event_date, start_time: start_time || '', end_time: end_time || '', venue, ref,
+  });
+  const details_text = composeBookingDetails({
+    role, event_date, start_time: start_time || '', end_time: end_time || '', venue, notes, ref,
   });
   const payload = {
     ref, role, event_date,
     start_time: start_time || '', end_time: end_time || '',
     headcount: Number(headcount), venue, name, phone,
-    email: email || '', notes: notes || '', status: 'new', whatsapp_text,
+    email: email || '', notes: notes || '', status: 'new',
+    whatsapp_text: details_text, // store the full details; availability is composed on the fly
   };
 
   try {
@@ -124,9 +142,14 @@ app.post('/api/bookings', async (req, res) => {
       row = db.prepare('SELECT * FROM bookings WHERE ref = ?').get(ref);
     }
     const clean = (n) => String(n || '').replace(/\D/g, '');
-    const waLink = `https://wa.me/${clean(phone)}?text=${encodeURIComponent(whatsapp_text)}`; // staff/client number
-    const waLinkOffice = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(whatsapp_text)}`; // agency number
-    res.status(201).json({ booking: row, waLink, waLinkOffice });
+    const staffJid = clean(phone);
+    // Stage 1 — availability check to the staff member
+    const waLink = `https://wa.me/${staffJid}?text=${encodeURIComponent(availability_text)}`;
+    // Stage 2 — full details to the staff member (send after they confirm)
+    const waLinkDetails = `https://wa.me/${staffJid}?text=${encodeURIComponent(details_text)}`;
+    // Fallback — to the agency office
+    const waLinkOffice = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(availability_text)}`;
+    res.status(201).json({ booking: row, waLink, waLinkDetails, waLinkOffice });
   } catch (err) {
     console.error('create booking error:', err.message);
     res.status(500).json({ error: 'Failed to save booking: ' + err.message });
@@ -149,12 +172,12 @@ app.get('/api/admin/bookings', async (req, res) => {
     let rows;
     if (useSupabase) {
       let q = supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(200);
-      if (status && ['new','quoted','confirmed','cancelled'].includes(status)) q = q.eq('status', status);
+      if (status && ['new','available','quoted','confirmed','cancelled'].includes(status)) q = q.eq('status', status);
       const { data, error } = await q;
       if (error) throw error;
       rows = data;
     } else {
-      if (status && ['new','quoted','confirmed','cancelled'].includes(status)) {
+      if (status && ['new','available','quoted','confirmed','cancelled'].includes(status)) {
         rows = db.prepare('SELECT * FROM bookings WHERE status = ? ORDER BY created_at DESC LIMIT 200').all(status);
       } else {
         rows = db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 200').all();
@@ -167,10 +190,40 @@ app.get('/api/admin/bookings', async (req, res) => {
   }
 });
 
+app.get('/api/admin/bookings/:ref/messages', async (req, res) => {
+  if (!checkAdmin(req, res)) return;
+  try {
+    let b;
+    if (useSupabase) {
+      const { data, error } = await supabase.from('bookings').select('*').eq('ref', req.params.ref).maybeSingle();
+      if (error) throw error;
+      b = data;
+    } else {
+      b = db.prepare('SELECT * FROM bookings WHERE ref = ?').get(req.params.ref);
+    }
+    if (!b) return res.status(404).json({ error: 'Not found.' });
+    const clean = (n) => String(n || '').replace(/\D/g, '');
+    const staffJid = clean(b.phone);
+    const availability_text = composeAvailabilityMessage(b);
+    const details_text = composeBookingDetails(b);
+    res.json({
+      phone: b.phone,
+      linkAvailability: `https://wa.me/${staffJid}?text=${encodeURIComponent(availability_text)}`,
+      linkDetails: `https://wa.me/${staffJid}?text=${encodeURIComponent(details_text)}`,
+      linkOffice: `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(availability_text)}`,
+      availability_text,
+      details_text,
+    });
+  } catch (err) {
+    console.error('compose messages error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.patch('/api/admin/bookings/:ref', async (req, res) => {
   if (!checkAdmin(req, res)) return;
   const { status } = req.body || {};
-  const allowed = ['new', 'confirmed', 'quoted', 'cancelled'];
+  const allowed = ['new', 'available', 'quoted', 'confirmed', 'cancelled'];
   if (!status || !allowed.includes(status)) {
     return res.status(400).json({ error: 'Invalid status. Allowed: ' + allowed.join(', ') });
   }

@@ -36,7 +36,7 @@
                 <div class="flex gap-2">
                     <select id="statusFilter" onchange="load()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                         <option value="">All statuses</option>
-                        <option>new</option><option>quoted</option><option>confirmed</option><option>cancelled</option>
+                        <option>new</option><option>available</option><option>quoted</option><option>confirmed</option><option>cancelled</option>
                     </select>
                     <button onclick="load()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-100 transition">Refresh</button>
                     <button onclick="logout()" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50 transition">Lock</button>
@@ -73,10 +73,14 @@
             <hr class="my-4">
             <p class="text-xs font-bold text-gray-500 mb-2">PRE-FILLED WHATSAPP MESSAGE</p>
             <pre id="mWa" class="bg-gray-50 rounded-lg p-3 text-xs whitespace-pre-wrap"></pre>
-            <div class="flex gap-3 mt-5">
-                <a id="mWaLink" href="#" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#1fb457]">Open WhatsApp</a>
+            <div class="flex gap-3 mt-5 flex-wrap">
+                <a id="mWaLink" href="#" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#1fb457]">1. Availability Check</a>
+                <a id="mWaDetails" href="#" target="_blank" rel="noopener" class="bg-[#A4C71D] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#8fb818]">2. Full Details</a>
+            </div>
+            <div class="flex gap-3 mt-4 flex-wrap">
                 <div class="flex-1"></div>
                 <button data-st="new" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">new</button>
+                <button data-st="available" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">available</button>
                 <button data-st="quoted" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">quoted</button>
                 <button data-st="confirmed" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-gray-100">confirmed</button>
                 <button data-st="cancelled" onclick="setStatus(this)" class="border border-gray-300 px-3 py-2 rounded-full text-xs font-semibold hover:bg-red-500 hover:text-white">cancelled</button>
@@ -111,7 +115,7 @@
         }
 
         function badge(st) {
-            const map = { new:'bg-blue-100 text-blue-700', quoted:'bg-amber-100 text-amber-700', confirmed:'bg-green-100 text-green-700', cancelled:'bg-red-100 text-red-700' };
+            const map = { new:'bg-blue-100 text-blue-700', available:'bg-teal-100 text-teal-700', quoted:'bg-amber-100 text-amber-700', confirmed:'bg-green-100 text-green-700', cancelled:'bg-red-100 text-red-700' };
             return `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${map[st]||'bg-gray-100 text-gray-600'}">${st}</span>`;
         }
 
@@ -156,8 +160,14 @@
                 <p><b>Phone:</b> ${x.phone} ${x.email ? '· <b>Email:</b> ' + x.email : ''}</p>
                 ${x.notes ? '<p><b>Notes:</b> ' + x.notes + '</p>' : ''}
                 <p class="text-xs text-gray-400">Created: ${x.created_at}</p>`;
-            document.getElementById('mWa').textContent = x.whatsapp_text;
-            document.getElementById('mWaLink').href = 'https://wa.me/' + (x.phone ? x.phone.replace(/[^0-9]/g,'') : '') + '?text=' + encodeURIComponent(x.whatsapp_text);
+
+            // fetch both message stages + links
+            const m = await (await fetch('/api/admin/bookings/' + ref + '/messages', { headers: getHeaders() })).json();
+            document.getElementById('mWa').textContent = m.availability_text + '\n\n--- FULL DETAILS ---\n' + m.details_text;
+            document.getElementById('mWaLink').href = m.linkAvailability;
+            document.getElementById('mWaLink').innerHTML = '1. Availability Check';
+            document.getElementById('mWaDetails').href = m.linkDetails;
+            document.getElementById('mWaDetails').innerHTML = '2. Full Details';
             document.getElementById('modal').classList.remove('hidden');
         }
 
