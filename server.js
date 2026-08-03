@@ -35,8 +35,10 @@ if (SUPABASE_URL && SUPABASE_SECRET) {
   console.log(useSupabase
     ? 'Storage: Supabase (' + SUPABASE_URL + ')'
     : 'Storage: Supabase configured but bookings table missing - falling back to SQLite (run migration).');
-} else {
-  // SQLite fallback
+}
+
+if (!useSupabase) {
+  // SQLite fallback (used when no Supabase config, or Supabase table not provisioned)
   const Database = (await import('better-sqlite3')).default;
   const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
   fs.mkdirSync(DATA_DIR, { recursive: true });
