@@ -21,6 +21,13 @@ const WA_BRIDGE_URL = process.env.WA_BRIDGE_URL || '';
 const WA_BRIDGE_DB = process.env.WA_BRIDGE_DB || '';
 const BRIDGE_POLL_MS = Number(process.env.BRIDGE_POLL_MS || 5000);
 
+// Autonomous-lifecycle tuning. Deadlines in hours; how many reminders to send before giving up.
+const AVAIL_NUDGE_HOURS = Number(process.env.AVAIL_NUDGE_HOURS || 24);     // wait this long for a YES/NO reply
+const AVAIL_MAX_NUDGES = Number(process.env.AVAIL_MAX_NUDGES || 2);         // then nudge, up to this many times
+const TS_NUDGE_HOURS = Number(process.env.TS_NUDGE_HOURS || 24);            // wait this long for the timesheet reply
+const TS_MAX_NUDGES = Number(process.env.TS_MAX_NUDGES || 3);               // then nudge, up to this many times
+const HOURS_MS = 3600 * 1000;
+
 let bridge = null; // { url, db, online, authenticated, lastChecked }
 
 async function bridgeHealth() {
@@ -169,6 +176,50 @@ function composeTimesheetRequest(b) {
     '📍 Venue: ' + b.venue,
     '📌 Ref: ' + b.ref + ' · StaffConnect',
   ].join('\n');
+}
+
+// Follow-up nudge for an unanswered availability check (staff haven't said YES/NO yet).
+function composeAvailabilityNudge(b, attempt) {
+  return [
+    'Hi ' + b.name + ' — quick follow-up 👋',
+    'We haven\'t heard back on this yet. Are you available? Reply **YES** or **NO**.',
+    '(Attempt ' + attempt + ')',
+    '',
+    '📅 Date: ' + b.event_date,
+    '🕒 Times: ' + b.start_time + ' – ' + b.end_time,
+    '📌 Ref: ' + b.ref + ' · StaffConnect',
+  ].join('\n');
+}
+
+// Follow-up nudge for a missing timesheet (staff confirmed but haven't sent times).
+function composeTimesheetNudge(b, attempt) {
+  return [
+    'Hi ' + b.name + ' — your timesheet is still outstanding 🙏',
+    'Please reply with your **time in** and **time out** for the event, e.g.:',
+    '',
+    '08:00 16:00',
+    '(Attempt ' + attempt + ')',
+    '',
+    '📅 Event: ' + b.event_date,
+    '📌 Ref: ' + b.ref + ' · StaffConnect',
+  ].join('\n');
+}
+
+// Office summary — a short digest of the booking lifecycle sent to the agency number.
+function composeOfficeSummary(kind, b, extra) {
+  const head = {
+    created: '📋 New booking received',
+    confirmed: '✅ Staff confirmed available',
+    declined: '❌ Staff not available',
+    timesheet: '🧾 Timesheet captured',
+  }[kind] || 'StaffConnect update';
+  const lines = [head + ' — ' + b.ref];
+  lines.push('👤 ' + b.name + ' · ' + b.role);
+  lines.push('📅 ' + b.event_date + ' · ' + (b.start_time || '') + '–' + (b.end_time || ''));
+  lines.push('📍 ' + b.venue + ' · 📞 ' + b.phone);
+  if (extra) lines.push(extra);
+  lines.push('🔗 ' + (process.env.PUBLIC_URL ? process.env.PUBLIC_URL + '/admin' : 'StaffConnect admin'));
+  return lines.join('\n');
 }
 
 // Parse a timesheet reply like "08:00 16:00", "8am - 5pm", "08:00 to 16:30"
@@ -369,9 +420,11 @@ async function pollBridgeReplies() {
       await setBookingStatus(booking.ref, 'available');
       const details = composeBookingDetails(booking);
       const sent = await sendBroadcast(booking.phone, details);
+      await notifyOffice('confirmed', booking);
       console.log(`[bridge] ${booking.ref} staff YES → available; stage-2 sent live=${sent.live} (${sent.reason || 'ok'})`);
     } else {
       await setBookingStatus(booking.ref, 'cancelled');
+      await notifyOffice('declined', booking);
       console.log(`[bridge] ${booking.ref} staff NO → cancelled`);
     }
   }
@@ -462,8 +515,7 @@ async function captureTimesheetReply(row, phone) {
   if (!booking) return null;
   if (!wasTimesheetSent(booking.ref)) return null; // we must have asked
   storeTimesheet(booking.ref, parsed, String(row.content));
-  console.log(`[bridge] ${booking.ref} timesheet captured: in ${parsed.timeIn} out ${parsed.timeOut} = ${parsed.totalHours}h`);
-  // Acknowledge to the staff member (agency is the one ending the conversation).
+  console.log(`[bridge] ${booking.ref} timesheet captured: in ${parsed.timeIn} out ${parsed.timeOut} = ${parsed.totalHours}h`);  // Acknowledge to the staff member (agency is the one ending the conversation).
   const ack = [
     `Thanks ${booking.name}! Your timesheet is logged ✅`,
     '',
@@ -474,7 +526,87 @@ async function captureTimesheetReply(row, phone) {
     '📌 Ref: ' + booking.ref + ' · StaffConnect',
   ].join('\n');
   await sendBroadcast(booking.phone, ack);
+  // Also notify the office with the captured hours (agency ends the conversation).
+  await notifyOffice('timesheet', booking, `🧮 Total: ${parsed.totalHours}h (${parsed.timeIn}–${parsed.timeOut})`);
   return booking.ref;
+}
+
+// ── Autonomous lifecycle: nudges + office notifications ──
+// Nudge registry persists how many follow-ups we've sent per booking/stage so we
+// never spam and never re-fire across restarts.
+let nudgeRegistry = new Map(); // `${ref}|${stage}` -> { count, lastNudgeAt }
+function ensureNudgeTables() {
+  if (!rrdb) return;
+  rrdb.exec(`CREATE TABLE IF NOT EXISTS nudges (
+    key TEXT PRIMARY KEY, count INTEGER, last_at INTEGER
+  );`);
+}
+function loadNudgeRegistries() {
+  try {
+    ensureNudgeTables();
+    const rows = rrdb.prepare('SELECT key, count, last_at FROM nudges').all();
+    for (const r of rows) nudgeRegistry.set(r.key, { count: r.count, lastNudgeAt: r.last_at });
+  } catch (e) { console.error('[bridge] nudge registry load error:', e.message); }
+}
+function nudgeCount(ref, stage) {
+  return (nudgeRegistry.get(ref + '|' + stage) || {}).count || 0;
+}
+function markNudgeSent(ref, stage) {
+  const key = ref + '|' + stage;
+  const cur = nudgeRegistry.get(key) || { count: 0, lastNudgeAt: 0 };
+  nudgeRegistry.set(key, { count: cur.count + 1, lastNudgeAt: Date.now() });
+  try {
+    if (rrdb) { ensureNudgeTables(); rrdb.prepare('INSERT OR REPLACE INTO nudges (key, count, last_at) VALUES (?,?,?)').run(key, cur.count + 1, Date.now()); }
+  } catch (e) {}
+}
+
+// Notify the agency office number (we're the one closing the conversation).
+async function notifyOffice(kind, b, extra) {
+  if (!WA_BRIDGE_URL || !bridge || !bridge.authenticated) return { ok: false, live: false, reason: 'bridge not live' };
+  return sendBroadcast(WA_NUMBER, composeOfficeSummary(kind, b, extra));
+}
+
+// Autonomous loop — decide which follow-ups to fire on this tick.
+async function pollLifecycle() {
+  if (!WA_BRIDGE_URL || !bridge || !bridge.online || !bridge.authenticated) return;
+  let bookings;
+  if (useSupabase) {
+    const { data } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(500);
+    bookings = data || [];
+  } else {
+    bookings = db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 500').all();
+  }
+  const now = Date.now();
+  for (const b of bookings) {
+    // 1) Availability nudge — staff got the stage-1 check but never replied (still 'new').
+    if (b.status === 'new' && wasAvailabilitySent(b.ref)) {
+      const sent = sentRegistry.get(b.ref);
+      const age = sent ? now - sent.at : 0;
+      const count = nudgeCount(b.ref, 'availability');
+      if (age >= AVAIL_NUDGE_HOURS * HOURS_MS && count < AVAIL_MAX_NUDGES) {
+        const text = composeAvailabilityNudge(b, count + 1);
+        const r = await sendBroadcast(b.phone, text);
+        if (r.live) markNudgeSent(b.ref, 'availability');
+        console.log(`[lifecycle] ${b.ref} availability nudge ${count + 1}/${AVAIL_MAX_NUDGES} live=${r.live}`);
+      }
+    }
+
+    // 2) Timesheet nudge — staff confirmed, event ended, we asked, but no timesheet yet.
+    if (['available', 'confirmed'].includes(b.status) && wasTimesheetSent(b.ref)) {
+      const end = eventEndDate(b);
+      if (end && now > end.getTime() && !getTimesheet(b.ref)) {
+        const tss = tsRegistry.get(b.ref);
+        const age = tss ? now - tss.sentAt : 0;
+        const count = nudgeCount(b.ref, 'timesheet');
+        if (age >= TS_NUDGE_HOURS * HOURS_MS && count < TS_MAX_NUDGES) {
+          const text = composeTimesheetNudge(b, count + 1);
+          const r = await sendBroadcast(b.phone, text);
+          if (r.live) markNudgeSent(b.ref, 'timesheet');
+          console.log(`[lifecycle] ${b.ref} timesheet nudge ${count + 1}/${TS_MAX_NUDGES} live=${r.live}`);
+        }
+      }
+    }
+  }
 }
 
 // ── API ──
@@ -530,6 +662,7 @@ app.post('/api/bookings', async (req, res) => {
     if (bridgeState.online && bridgeState.authenticated) {
       liveSend = await sendBroadcast(staffJid, availability_text);
       if (liveSend && liveSend.live) markAvailabilitySent(ref, staffJid);
+      await notifyOffice('created', row); // agency gets a summary of the new booking
     }
     res.status(201).json({
       booking: row, waLink, waLinkDetails, waLinkOffice,
@@ -722,8 +855,10 @@ app.listen(PORT, async () => {
     if (WA_BRIDGE_DB) {
       await loadSentRegistry(); // persist which bookings got a live stage-1
       await loadTsRegistries(); // timesheet request-sent + captured data
+      await loadNudgeRegistries(); // autonomous follow-up counts
       setInterval(() => pollBridgeReplies().catch((e) => console.error('[bridge] poll error:', e.message)), BRIDGE_POLL_MS);
       setInterval(() => pollTimesheets().catch((e) => console.error('[bridge] timesheet poll error:', e.message)), BRIDGE_POLL_MS);
+      setInterval(() => pollLifecycle().catch((e) => console.error('[lifecycle] poll error:', e.message)), Number(process.env.LIFECYCLE_POLL_MS || 60000));
     }
     setInterval(() => bridgeHealth().catch(() => {}), 15000);
   }
