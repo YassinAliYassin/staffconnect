@@ -172,6 +172,25 @@ async function findBookingByPhone(phone) {
   return found || null;
 }
 
+// WhatsApp now keys senders by LID (Linked ID) for privacy. The bridge stores a
+// lid→phone map in its whatsmeow DB; resolve any LID sender back to a phone number
+// so we can match it to a booking. Returns the phone digits (string) or null.
+async function resolveLid(sender) {
+  if (!WA_BRIDGE_DB) return null;
+  const s = String(sender || '');
+  const whatsDB = path.join(path.dirname(WA_BRIDGE_DB), 'whatsapp.db');
+  if (!fs.existsSync(whatsDB)) return null;
+  try {
+    const Database = (await import('better-sqlite3')).default;
+    const rdb = new Database(whatsDB, { readonly: true });
+    const hit = rdb.prepare('SELECT pn FROM whatsmeow_lid_map WHERE lid = ?').get(s);
+    rdb.close();
+    return hit ? String(hit.pn) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function setBookingStatus(ref, status) {
   if (useSupabase) {
     const { error } = await supabase.from('bookings').update({ status }).eq('ref', ref);
@@ -179,6 +198,47 @@ async function setBookingStatus(ref, status) {
   } else {
     db.prepare('UPDATE bookings SET status = ? WHERE ref = ?').run(status, ref);
   }
+}
+
+// ── Reminder/availability-sent registry ──
+// We only auto-fire stage-2 when a staff reply matches a booking whose stage-1
+// availability check WE actually pushed within a recent window. This prevents the
+// bridge's huge initial history-sync (and unrelated historical YES/NO chats) from
+// retroactively confirming/cancelling older bookings. Persisted to the data dir so
+// it survives restarts; same guarantee as seenReplyIds but scoped per booking.
+let sentRegistry = new Map(); // ref -> { phone, at }
+const SENT_TTL_MS = Number(process.env.SENT_TTL_HOURS || 24 * 7) * 3600 * 1000; // keep a sent-mark for 7 days
+let rrdb = null;
+let rrdbDatabase = null; // cached Database class
+async function loadSentRegistry() {
+  try {
+    rrdbDatabase = (await import('better-sqlite3')).default;
+    rrdb = new rrdbDatabase(path.join(process.env.DATA_DIR || path.join(__dirname, 'data'), 'bridge_state.db'));
+    rrdb.exec(`CREATE TABLE IF NOT EXISTS sent_availability (
+      ref TEXT PRIMARY KEY, phone TEXT, at INTEGER
+    );`);
+    const rows = rrdb.prepare('SELECT ref, phone, at FROM sent_availability').all();
+    const now = Date.now();
+    for (const r of rows) {
+      if (now - r.at > SENT_TTL_MS) continue;
+      sentRegistry.set(r.ref, { phone: r.phone, at: r.at });
+    }
+  } catch (e) {
+    console.error('[bridge] sent-registry load error:', e.message);
+  }
+}
+function markAvailabilitySent(ref, phone) {
+  sentRegistry.set(ref, { phone, at: Date.now() });
+  try {
+    if (rrdb) rrdb.prepare('INSERT OR REPLACE INTO sent_availability (ref, phone, at) VALUES (?,?,?)').run(ref, phone, Date.now());
+  } catch (e) {}
+}
+function wasAvailabilitySent(ref, phone, maxAgeMs = SENT_TTL_MS) {
+  const e = sentRegistry.get(ref);
+  if (!e) return false;
+  if (Date.now() - e.at > maxAgeMs) return false;
+  const digits = (p) => String(p || '').replace(/\D/g, '');
+  return !phone || digits(e.phone).endsWith(digits(phone).slice(-9));
 }
 
 // Poll the bridge's SQLite message store for inbound staff replies (YES/NO).
@@ -201,6 +261,11 @@ async function pollBridgeReplies() {
     // store not ready yet — skip this tick, no throw (avoids log spam)
     return;
   }
+  // Only consider replies that arrived within the last 7 days — protects against
+  // the bridge's initial history-sync replaying old messages and auto-mutating older
+  // bookings on startup / restart (seenReplyIds is in-memory and resets on reboot).
+  const WINDOW = Number(process.env.BRIDGE_REPLY_WINDOW_HOURS || 24 * 7) * 3600 * 1000;
+  const nowMs = Date.now();
   for (const row of rows) {
     if (seenReplyIds.has(row.id)) continue;
     const text = String(row.content || '').trim();
@@ -208,10 +273,31 @@ async function pollBridgeReplies() {
     // Only treat short affirmative/negative replies as availability answers
     if (!/^(yes|yep|yeah|ya|sure|ok|y|no|nope|nah|not available|busy|can'?t|cant)/.test(lower)) continue;
     const isYes = /^(yes|yep|yeah|ya|sure|ok|y)\b/.test(lower);
-    const phone = String(row.sender || '').split('@')[0];
+    seenReplyIds.add(row.id); // mark seen regardless so history doesn't replay repeatedly
+
+    // Freshness guard: skip replies that are too old to belong to a live booking.
+    const replyTime = row.timestamp ? new Date(row.timestamp.replace(' ', 'T') + (row.timestamp.includes('Z') ? '' : 'Z')).getTime() : 0;
+    if (!replyTime || (nowMs - replyTime) > WINDOW) continue;
+
+    let phone = String(row.sender || '').split('@')[0];
+    // WhatsApp LIDs obscure the real number — resolve to the phone via lid_map so we
+    // can match the reply to the booking we sent. Fall back to the raw sender digits.
+    const lidPhone = await resolveLid(row.sender);
+    if (lidPhone) phone = lidPhone;
     const booking = await findBookingByPhone(phone);
-    seenReplyIds.add(row.id);
     if (!booking) continue; // no pending 'new' booking for that number
+
+    // Guard: the reply must be newer than the booking was created, so a reply sent
+    // before a booking existed can't retroactively confirm it.
+    const bookingTime = new Date(booking.created_at).getTime();
+    if (replyTime && bookingTime && replyTime < bookingTime) continue;
+
+    // CRITICAL: only auto-fire when we actually sent this booking's stage-1
+    // availability check to that staff member within the recent window. This stops
+    // the bridge's history-sync (and unrelated old YES/NO chats) from auto-mutating
+    // older bookings on startup/restart.
+    if (!wasAvailabilitySent(booking.ref, phone)) continue;
+
     if (isYes) {
       await setBookingStatus(booking.ref, 'available');
       const details = composeBookingDetails(booking);
@@ -276,6 +362,7 @@ app.post('/api/bookings', async (req, res) => {
     let bridgeState = await bridgeHealth();
     if (bridgeState.online && bridgeState.authenticated) {
       liveSend = await sendBroadcast(staffJid, availability_text);
+      if (liveSend && liveSend.live) markAvailabilitySent(ref, staffJid);
     }
     res.status(201).json({
       booking: row, waLink, waLinkDetails, waLinkOffice,
@@ -394,6 +481,18 @@ app.get('/api/bridge/status', async (req, res) => {
   });
 });
 
+// ── Live bridge QR code (serves the current code; refreshes ~20s) ──
+// The QR lives in the bridge's store dir as qr.png. We stream it with no-cache
+// so a browser refresh always shows the current rotating code.
+app.get('/qr', (req, res) => {
+  if (!WA_BRIDGE_DB) return res.status(404).send('Bridge not configured');
+  const qrPath = path.join(path.dirname(WA_BRIDGE_DB), 'qr.png');
+  if (!fs.existsSync(qrPath)) return res.status(404).send('No QR yet — bridge starting or already authenticated.');
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(qrPath);
+});
+
 // ── Live re-send of a booking's stage (admin) ──
 app.post('/api/admin/bookings/:ref/send', async (req, res) => {
   if (!checkAdmin(req, res)) return;
@@ -425,7 +524,10 @@ app.listen(PORT, async () => {
   if (WA_BRIDGE_URL) {
     const health = await bridgeHealth();
     console.log(`WhatsApp bridge: ${health.online ? 'online' : 'offline'} · authenticated=${health.authenticated} (${health.reason || 'ok'})`);
+    if (WA_BRIDGE_DB) {
+      await loadSentRegistry(); // persist which bookings got a live stage-1
+      setInterval(() => pollBridgeReplies().catch((e) => console.error('[bridge] poll error:', e.message)), BRIDGE_POLL_MS);
+    }
     setInterval(() => bridgeHealth().catch(() => {}), 15000);
-    if (WA_BRIDGE_DB) setInterval(() => pollBridgeReplies().catch((e) => console.error('[bridge] poll error:', e.message)), BRIDGE_POLL_MS);
   }
 });
