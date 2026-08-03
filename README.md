@@ -54,15 +54,18 @@ Configure via `.env` (see `.env.example`):
 ## Deploy
 
 This app has a backend, so it is **not** a static GitHub-Pages deploy anymore.
-Run it as a long-lived service, e.g. with pm2:
+It runs as a persistent pm2 service with boot persistence (systemd).
 
 ```bash
+# current production instance (already deployed):
 pm2 start server.js --name staffconnect
-# set ADMIN_CODE (and PORT / WA_NUMBER) in the environment or .env first
+pm2 save
+pm2 startup systemd -u yassin --hp /home/yassin   # one-time, sudo, for boot persistence
+
+# config in .env: PORT=5184, WA_NUMBER=27672961272, ADMIN_CODE=<strong passcode>
 ```
 
-or a systemd user unit (mirrors the notes-ai pattern). If you need it public, put
-it behind Tailscale Funnel or a reverse proxy with HTTPS.
+Expose it publicly via Tailscale Funnel or a reverse proxy with HTTPS when ready.
 
 ## Branding
 
