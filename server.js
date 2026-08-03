@@ -13,6 +13,60 @@ const PORT = process.env.PORT || 5184;
 const WA_NUMBER = process.env.WA_NUMBER || '27672961272';
 const ADMIN_CODE = process.env.ADMIN_CODE || 'fresh-admin';
 
+// ── WhatsApp live bridge (lharries/whatsapp-mcp) ──
+// Optional. When the Go bridge is configured AND authenticated, bookings auto-send
+// their stage-1 availability check over the wire, and a polling loop reads incoming
+// staff replies from the bridge's SQLite store to auto-transition + auto-send stage-2.
+const WA_BRIDGE_URL = process.env.WA_BRIDGE_URL || '';
+const WA_BRIDGE_DB = process.env.WA_BRIDGE_DB || '';
+const BRIDGE_POLL_MS = Number(process.env.BRIDGE_POLL_MS || 5000);
+
+let bridge = null; // { url, db, online, authenticated, lastChecked }
+
+async function bridgeHealth() {
+  if (!WA_BRIDGE_URL) return { available: false, online: false, authenticated: false, reason: 'not-configured' };
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2500);
+    const r = await fetch(WA_BRIDGE_URL + '/api/health', { signal: ctrl.signal });
+    clearTimeout(t);
+    const j = await r.json();
+    bridge = { url: WA_BRIDGE_URL, db: WA_BRIDGE_DB, online: true, authenticated: !!j.authenticated, connected: !!j.connected, reason: null };
+    return { ...bridge };
+  } catch (e) {
+    bridge = { url: WA_BRIDGE_URL, db: WA_BRIDGE_DB, online: false, authenticated: false, reason: e.message };
+    return { ...bridge };
+  }
+}
+
+// Try to send a live WhatsApp message via the bridge. Returns {ok, live, fallback}.
+async function sendBroadcast(phone, text) {
+  const clean = String(phone || '').replace(/\D/g, '');
+  if (WA_BRIDGE_URL) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(WA_BRIDGE_URL + '/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: clean, message: text }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.success) {
+        return { ok: true, live: true, fallback: false, message: j.message };
+      }
+      // Bridge reachable but send failed (likely not connected) → fall back to deep link
+      return { ok: false, live: false, reason: j.message || 'bridge send failed', fallbackLink: `https://wa.me/${clean}?text=${encodeURIComponent(text)}` };
+    } catch (e) {
+      return { ok: false, live: false, reason: e.message, fallbackLink: `https://wa.me/${clean}?text=${encodeURIComponent(text)}` };
+    }
+  }
+  // No bridge → deep link only
+  return { ok: false, live: false, reason: 'no bridge', fallbackLink: `https://wa.me/${clean}?text=${encodeURIComponent(text)}` };
+}
+
 // ── Storage backend: Supabase (primary) with SQLite fallback ──
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -103,6 +157,73 @@ function composeBookingDetails(b) {
   return lines.join('\n');
 }
 
+// ── DB-agnostic helpers (Supabase or SQLite) ──
+async function findBookingByPhone(phone) {
+  const clean = String(phone || '').replace(/\D/g, '');
+  if (!clean) return null;
+  const digits = (p) => String(p || '').replace(/\D/g, '');
+  if (useSupabase) {
+    const { data } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(500);
+    const rows = data || [];
+    return rows.find((r) => digits(r.phone).endsWith(clean.slice(-9)) && r.status === 'new') || null;
+  }
+  const rows = db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 500').all();
+  const found = rows.find((r) => digits(r.phone).endsWith(clean.slice(-9)) && r.status === 'new');
+  return found || null;
+}
+
+async function setBookingStatus(ref, status) {
+  if (useSupabase) {
+    const { error } = await supabase.from('bookings').update({ status }).eq('ref', ref);
+    if (error) throw error;
+  } else {
+    db.prepare('UPDATE bookings SET status = ? WHERE ref = ?').run(status, ref);
+  }
+}
+
+// Poll the bridge's SQLite message store for inbound staff replies (YES/NO).
+// On YES → set booking 'available' + auto-send stage-2 details.
+// On NO  → set booking 'cancelled' (+ notify office via deep link only, live opt-in below).
+const seenReplyIds = new Set();
+async function pollBridgeReplies() {
+  if (!WA_BRIDGE_DB || !bridge || !bridge.online) return;
+  let rows;
+  try {
+    const Database = (await import('better-sqlite3')).default;
+    const rdb = new Database(WA_BRIDGE_DB, { readonly: true });
+    rows = rdb.prepare(
+      `SELECT id, sender, content, timestamp FROM messages
+       WHERE is_from_me = 0 AND content IS NOT NULL
+       ORDER BY timestamp ASC`
+    ).all();
+    rdb.close();
+  } catch (e) {
+    // store not ready yet — skip this tick, no throw (avoids log spam)
+    return;
+  }
+  for (const row of rows) {
+    if (seenReplyIds.has(row.id)) continue;
+    const text = String(row.content || '').trim();
+    const lower = text.toLowerCase();
+    // Only treat short affirmative/negative replies as availability answers
+    if (!/^(yes|yep|yeah|ya|sure|ok|y|no|nope|nah|not available|busy|can'?t|cant)/.test(lower)) continue;
+    const isYes = /^(yes|yep|yeah|ya|sure|ok|y)\b/.test(lower);
+    const phone = String(row.sender || '').split('@')[0];
+    const booking = await findBookingByPhone(phone);
+    seenReplyIds.add(row.id);
+    if (!booking) continue; // no pending 'new' booking for that number
+    if (isYes) {
+      await setBookingStatus(booking.ref, 'available');
+      const details = composeBookingDetails(booking);
+      const sent = await sendBroadcast(booking.phone, details);
+      console.log(`[bridge] ${booking.ref} staff YES → available; stage-2 sent live=${sent.live} (${sent.reason || 'ok'})`);
+    } else {
+      await setBookingStatus(booking.ref, 'cancelled');
+      console.log(`[bridge] ${booking.ref} staff NO → cancelled`);
+    }
+  }
+}
+
 // ── API ──
 app.get('/api/health', (req, res) => res.json({
   ok: true, storage: useSupabase ? 'supabase' : 'sqlite', time: new Date().toISOString()
@@ -149,7 +270,18 @@ app.post('/api/bookings', async (req, res) => {
     const waLinkDetails = `https://wa.me/${staffJid}?text=${encodeURIComponent(details_text)}`;
     // Fallback — to the agency office
     const waLinkOffice = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(availability_text)}`;
-    res.status(201).json({ booking: row, waLink, waLinkDetails, waLinkOffice });
+
+    // Live send: if the bridge is authenticated, push stage-1 availability now.
+    let liveSend = null;
+    let bridgeState = await bridgeHealth();
+    if (bridgeState.online && bridgeState.authenticated) {
+      liveSend = await sendBroadcast(staffJid, availability_text);
+    }
+    res.status(201).json({
+      booking: row, waLink, waLinkDetails, waLinkOffice,
+      bridge: { available: bridgeState.online, authenticated: bridgeState.authenticated },
+      stage1: liveSend, // {ok, live, reason|fallbackLink}
+    });
   } catch (err) {
     console.error('create booking error:', err.message);
     res.status(500).json({ error: 'Failed to save booking: ' + err.message });
@@ -248,6 +380,52 @@ app.patch('/api/admin/bookings/:ref', async (req, res) => {
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-app.listen(PORT, () => {
+// ── Bridge status (admin + diagnostic) ──
+app.get('/api/bridge/status', async (req, res) => {
+  const st = await bridgeHealth();
+  res.json({
+    configured: !!WA_BRIDGE_URL,
+    url: st.url || null,
+    online: st.online,
+    authenticated: st.authenticated,
+    connected: st.connected || false,
+    reason: st.reason || null,
+    dbPresent: WA_BRIDGE_DB && fs.existsSync(WA_BRIDGE_DB),
+  });
+});
+
+// ── Live re-send of a booking's stage (admin) ──
+app.post('/api/admin/bookings/:ref/send', async (req, res) => {
+  if (!checkAdmin(req, res)) return;
+  const { stage } = req.body || {};
+  try {
+    let b;
+    if (useSupabase) {
+      const { data, error } = await supabase.from('bookings').select('*').eq('ref', req.params.ref).maybeSingle();
+      if (error) throw error;
+      b = data;
+    } else {
+      b = db.prepare('SELECT * FROM bookings WHERE ref = ?').get(req.params.ref);
+    }
+    if (!b) return res.status(404).json({ error: 'Not found.' });
+    const text = stage === 'details'
+      ? composeBookingDetails(b)
+      : composeAvailabilityMessage(b);
+    const result = await sendBroadcast(b.phone, text);
+    res.json({ ref: b.ref, stage: stage || 'availability', result });
+  } catch (err) {
+    console.error('live send error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, async () => {
   console.log(`StaffConnect listening on http://localhost:${PORT} (WA ${WA_NUMBER})`);
+  // Start bridge health + reply polling loops
+  if (WA_BRIDGE_URL) {
+    const health = await bridgeHealth();
+    console.log(`WhatsApp bridge: ${health.online ? 'online' : 'offline'} · authenticated=${health.authenticated} (${health.reason || 'ok'})`);
+    setInterval(() => bridgeHealth().catch(() => {}), 15000);
+    if (WA_BRIDGE_DB) setInterval(() => pollBridgeReplies().catch((e) => console.error('[bridge] poll error:', e.message)), BRIDGE_POLL_MS);
+  }
 });
