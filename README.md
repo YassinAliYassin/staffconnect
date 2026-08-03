@@ -1,6 +1,6 @@
-# Fresh People Book
+# StaffConnect
 
-Book event staff on WhatsApp — a take.app-style staff-booking app for Fresh People
+A take.app-style WhatsApp staff-booking app for Fresh People
 (Premier Talent & Events Staffing, Johannesburg / Randburg, Gauteng).
 
 Clients pick their staff from a structured role catalog, step through a booking
@@ -57,7 +57,7 @@ This app has a backend, so it is **not** a static GitHub-Pages deploy anymore.
 Run it as a long-lived service, e.g. with pm2:
 
 ```bash
-pm2 start server.js --name fresh-people-book
+pm2 start server.js --name staffconnect
 # set ADMIN_CODE (and PORT / WA_NUMBER) in the environment or .env first
 ```
 
