@@ -19,6 +19,15 @@ deals. Includes an admin dashboard to view and manage all bookings.
   (new → quoted → confirmed → cancelled).
 - **WhatsApp deep-link** — every booking produces a `wa.me` link with the message
   pre-filled; staff can reply with a quote and confirm.
+- **Live two-way WhatsApp bridge** (optional) — when connected, the full loop is
+  automated: stage-1 availability auto-sends on booking, staff **YES/NO** replies
+  are detected and auto-transition the booking (YES → stage-2 details auto-send;
+  NO → cancelled), and a **timesheet request** auto-sends after the event ends.
+  Staff time-in/time-out replies are parsed into total hours and stored.
+- **Autonomous lifecycle** — no manual clicks: unanswered availability and missing
+  timesheets get automatic **follow-up nudges**, and the agency's WhatsApp number
+  receives a summary at every stage (booking created, confirmed, declined,
+  timesheet captured). All deadlines and max-nudge counts are configurable.
 
 ## Stack
 
@@ -45,6 +54,14 @@ Configure via `.env` (see `.env.example`):
 | `DATA_DIR` | `./data` | Where the SQLite fallback DB lives |
 | `SUPABASE_URL` | — | Supabase project URL (e.g. https://xxx.supabase.co) |
 | `SUPABASE_SECRET_KEY` | — | Supabase secret/service key (server-side) |
+| `WA_BRIDGE_URL` | — | Go bridge REST URL (e.g. http://localhost:8080) |
+| `WA_BRIDGE_DB` | — | Path to the bridge's message store (messages.db) |
+| `AVAIL_NUDGE_HOURS` | `24` | Wait this long before nudging an unanswered YES/NO |
+| `AVAIL_MAX_NUDGES` | `2` | Max availability follow-ups per booking |
+| `TS_NUDGE_HOURS` | `24` | Wait this long after the event for the timesheet |
+| `TS_MAX_NUDGES` | `3` | Max timesheet follow-ups per booking |
+| `LIFECYCLE_POLL_MS` | `60000` | How often the autonomous loop checks deadlines |
+| `PUBLIC_URL` | — | Public base URL for the admin link in office summaries |
 
 ## Storage: SQLite (default) or Supabase
 
