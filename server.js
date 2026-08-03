@@ -76,17 +76,15 @@ function genRef() {
 
 function composeWhatsApp(b) {
   const fields = [
-    'Hi Fresh People! I\'d like to book event staff.',
-    '📅 Event date: ' + b.event_date,
+    'Hi ' + b.name + '! You\'ve been booked. Here are your details:',
+    '🌟 Role: ' + b.role,
+    '📅 Date: ' + b.event_date,
     '🕒 Times: ' + b.start_time + ' – ' + b.end_time,
-    '👥 Staff needed: ' + b.headcount,
-    '🎯 Role: ' + b.role,
     '📍 Venue/area: ' + b.venue,
-    '🙋 Name: ' + b.name,
-    '📱 Phone: ' + b.phone,
   ];
-  if (b.notes) fields.push('📝 Notes: ' + b.notes);
-  fields.push('📌 Ref: ' + b.ref);
+  if (b.notes) fields.push('📝 Instructions: ' + b.notes);
+  fields.push('Please confirm you can make it. Thanks! 🙏');
+  fields.push('📌 Ref: ' + b.ref + ' · StaffConnect');
   return fields.join('\n');
 }
 
@@ -125,8 +123,10 @@ app.post('/api/bookings', async (req, res) => {
       stmt.run(payload);
       row = db.prepare('SELECT * FROM bookings WHERE ref = ?').get(ref);
     }
-    const waLink = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(whatsapp_text)}`;
-    res.status(201).json({ booking: row, waLink });
+    const clean = (n) => String(n || '').replace(/\D/g, '');
+    const waLink = `https://wa.me/${clean(phone)}?text=${encodeURIComponent(whatsapp_text)}`; // staff/client number
+    const waLinkOffice = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(whatsapp_text)}`; // agency number
+    res.status(201).json({ booking: row, waLink, waLinkOffice });
   } catch (err) {
     console.error('create booking error:', err.message);
     res.status(500).json({ error: 'Failed to save booking: ' + err.message });

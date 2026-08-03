@@ -38,13 +38,13 @@
     <header class="bg-gradient-to-br from-[#FBFBF9] via-white to-[#F0F5DC]">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 grid lg:grid-cols-2 gap-12 items-center">
             <div>
-                <p class="text-[#A4C71D] font-bold tracking-wide mb-4 uppercase">WhatsApp Staff Booking</p>
-                <h1 class="text-4xl md:text-6xl font-black leading-tight tracking-tight mb-6">Book Event Staff <span class="text-[#A4C71D]">On WhatsApp</span></h1>
-                <p class="text-xl text-gray-600 mb-8 leading-relaxed max-w-xl">Pick your team, fill a few details, and we'll confirm on WhatsApp in minutes. Structured bookings — fewer mistakes, faster deals.</p>
-                <a href="#wizard" class="bg-[#25D366] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#1fb457] transition-colors inline-flex items-center gap-2">Start Booking →</a>
+                <p class="text-[#A4C71D] font-bold tracking-wide mb-4 uppercase">StaffConnect · Internal Staff Booking</p>
+                <h1 class="text-4xl md:text-6xl font-black leading-tight tracking-tight mb-6">Book Your Staff <span class="text-[#A4C71D]">On WhatsApp</span></h1>
+                <p class="text-xl text-gray-600 mb-8 leading-relaxed max-w-xl">Schedule a staff member for an event, and send them their booking confirmation straight to their WhatsApp. Structured, consistent, no missed details.</p>
+                <a href="#wizard" class="bg-[#25D366] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#1fb457] transition-colors inline-flex items-center gap-2">Book a Staff Member →</a>
                 <div class="mt-8 flex flex-wrap gap-6 text-sm text-gray-500">
-                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Free to enquire</span>
-                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Respond in minutes</span>
+                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Confirmations to staff WhatsApp</span>
+                    <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Every booking logged</span>
                     <span class="flex items-center gap-2"><span class="text-[#A4C71D] font-bold">✓</span> Randburg, Gauteng</span>
                 </div>
             </div>
@@ -70,8 +70,8 @@
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-10">
                 <p class="text-[#A4C71D] font-bold tracking-wide mb-3 uppercase">Book in minutes</p>
-                <h2 class="text-4xl font-black mb-2">Create Your Booking</h2>
-                <p class="text-gray-600">Steps below. We'll open WhatsApp with everything pre-filled at the end.</p>
+                <h2 class="text-4xl font-black mb-2">Book a Staff Member</h2>
+                <p class="text-gray-600">Steps below. We'll open WhatsApp pre-filled to send the confirmation to the staff member at the end.</p>
             </div>
 
             <!-- progress -->
@@ -127,29 +127,29 @@
                     </div>
                 </div>
 
-                <!-- STEP 3: venue & contact -->
+                <!-- STEP 3: event + staff member -->
                 <div class="step fade-in" data-step="3">
-                    <h3 class="text-xl font-bold mb-6">Where & who should we contact?</h3>
+                    <h3 class="text-xl font-bold mb-6">Event details & the staff member</h3>
                     <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📍 Venue / area</span>
                         <input id="f_venue" type="text" placeholder="e.g. Sandton Convention Centre" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
                     </label>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">🙋 Your name</span>
-                            <input id="f_name" type="text" placeholder="Full name" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
+                        <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">🙋 Staff member name</span>
+                            <input id="f_name" type="text" placeholder="Staff member's full name" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
                         </label>
-                        <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📱 Phone (WhatsApp)</span>
+                        <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📱 Staff WhatsApp (send confirmation here)</span>
                             <input id="f_phone" type="tel" placeholder="+27 ..." class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
                         </label>
                     </div>
                     <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📧 Email (optional)</span>
                         <input id="f_email" type="email" placeholder="you@email.com" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]">
                     </label>
-                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📝 Notes (optional)</span>
-                        <textarea id="f_notes" rows="3" placeholder="Anything else we should know — dress code, brief, etc." class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]"></textarea>
+                    <label class="block mb-4"><span class="font-semibold text-sm text-gray-700">📝 Instructions for staff (optional)</span>
+                        <textarea id="f_notes" rows="3" placeholder="e.g. dress code, arrival time, brief" class="mt-1 w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#A4C71D]"></textarea>
                     </label>
                     <div class="flex gap-3 mt-6">
                         <button class="flex-1 border-2 border-gray-300 text-gray-600 px-6 py-3 rounded-full font-bold hover:border-gray-400 transition" onclick="prev(2)">Back</button>
-                        <button class="flex-1 bg-[#25D366] text-white px-6 py-3 rounded-full font-bold hover:bg-[#1fb457] transition" onclick="submit()">Submit Booking ➤</button>
+                        <button class="flex-1 bg-[#25D366] text-white px-6 py-3 rounded-full font-bold hover:bg-[#1fb457] transition" onclick="submit()">Book Staff Member ➤</button>
                     </div>
                 </div>
 
@@ -158,9 +158,9 @@
                     <div class="text-center py-6">
                         <div class="w-16 h-16 bg-[#25D366] text-white rounded-full flex items-center justify-center text-3xl font-black mx-auto mb-5">✓</div>
                         <h3 class="text-2xl font-black mb-2">Booking Saved!</h3>
-                        <p class="text-gray-600 mb-2">Your booking <b id="doneRef"></b> has been logged. Finish on WhatsApp to get confirmed:</p>
-                        <a id="doneLink" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-[#25D366] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#1fb457] transition my-4">Open WhatsApp →</a>
-                        <p class="text-gray-500 text-sm">WhatsApp didn't open? <a id="doneLink2" href="#" target="_blank" rel="noopener" class="text-[#A4C71D] underline font-semibold">Tap here</a>.</p>
+                        <p class="text-gray-600 mb-2">Your booking <b id="doneRef"></b> has been logged. Send it on WhatsApp to <b id="doneRecipient"></b> to get confirmed:</p>
+                        <a id="doneLink" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-[#25D366] text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-[#1fb457] transition my-4">Send on WhatsApp →</a>
+                        <p class="text-gray-500 text-sm">Wrong number? <a id="doneLinkOffice" href="#" target="_blank" rel="noopener" class="text-[#A4C71D] underline font-semibold">Send to Fresh People office instead</a>.</p>
                         <button class="mt-6 border-2 border-gray-300 text-gray-600 px-6 py-3 rounded-full font-bold hover:border-gray-400 transition" onclick="reset()">Start another booking</button>
                     </div>
                 </div>
@@ -281,8 +281,10 @@
                 if (!resp.ok) throw new Error(data.error || 'Save failed');
                 bookingData = data;
                 $('doneRef').textContent = data.booking.ref;
+                // Send to the staff member's number (as entered); office as fallback.
                 $('doneLink').href = data.waLink;
-                $('doneLink2').href = data.waLink;
+                $('doneRecipient').textContent = $('f_phone').value;
+                $('doneLinkOffice').href = data.waLinkOffice;
                 show(4);
             } catch (err) {
                 alert('Something went wrong saving your booking: ' + err.message);
